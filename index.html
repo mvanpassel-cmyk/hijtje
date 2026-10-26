@@ -56,7 +56,8 @@
   .keybox p{margin:0 0 10px;font-size:12.5px;color:var(--soft);max-width:70ch;}
   .keybox.saved{margin:34px 0 0;padding:10px 0;border-bottom:0;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
   .keybox.saved p{margin:0}
-  .keybox .row{display:flex;gap:14px;align-items:center;flex-wrap:wrap;}
+  .keybox .remember{font-size:12.5px;color:var(--soft);display:flex;gap:6px;align-items:center}
+.keybox .row{display:flex;gap:14px;align-items:center;flex-wrap:wrap;}
   .keybox input.key{flex:1;min-width:220px;}
   .archive{margin-top:56px;border-top:1px solid var(--rule);padding-top:18px;}
   .archive h2{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--soft);font-weight:400;margin:0 0 14px;}
@@ -76,10 +77,11 @@
   </header>
 
   <section class="keybox" id="keybox">
-    <p id="keyHelp">Deze pagina draait op GitHub Pages en heeft een eigen Anthropic API-sleutel nodig. Je sleutel blijft in deze browser (localStorage) en wordt alleen naar api.anthropic.com gestuurd.</p>
+    <p id="keyHelp"></p>
     <div class="row">
       <input class="key" id="key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…">
-      <button id="keySave">Bewaar sleutel</button>
+      <label class="remember"><input type="checkbox" id="keyRemember"> Onthoud op dit apparaat</label>
+      <button id="keySave">Gebruik sleutel</button>
       <button class="ghost" id="keyClear" style="display:none">Wis sleutel</button>
     </div>
   </section>
@@ -130,25 +132,39 @@
     del(k){ try{ localStorage.removeItem(k); }catch(e){} }
   };
 
-  /* ---- sleutel ---- */
+  /* ---- sleutel ----
+     Standaard alleen voor deze sessie (sessionStorage, weg zodra het tabblad sluit).
+     Alleen met "Onthoud op dit apparaat" in localStorage. Let op: alle tools op
+     mvanpassel-cmyk.github.io delen één origin en dus één localStorage. */
+  const sess = {
+    get(k){ try{ return sessionStorage.getItem(k); }catch(e){ return null; } },
+    set(k,v){ try{ sessionStorage.setItem(k,v); }catch(e){} },
+    del(k){ try{ sessionStorage.removeItem(k); }catch(e){} }
+  };
+  const getKey = () => sess.get(APIKEY) || store.get(APIKEY);
+  const HELP = 'Deze pagina draait op GitHub Pages en heeft een eigen Anthropic API-sleutel nodig (gebruik kost API-tegoed). Je ikje en de sleutel gaan alleen naar api.anthropic.com. Standaard onthoudt de pagina de sleutel alleen tot je dit tabblad sluit; vink "Onthoud" aan om hem in deze browser te bewaren (handig, maar leesbaar voor elk script op dit domein).';
   function showKeyState(){
-    const has = !!store.get(APIKEY);
+    const has = !!getKey();
+    const remembered = !!store.get(APIKEY);
+    const rem = document.getElementById('keyRemember').closest('label');
+    rem.style.display = has ? 'none' : '';
     keyEl.style.display = has ? 'none' : '';
     keySave.style.display = has ? 'none' : '';
     keyClear.style.display = has ? '' : 'none';
     const kb = document.getElementById('keybox'), cols = document.querySelector('.cols');
     if(has){ cols.after(kb); kb.classList.add('saved'); } else { cols.before(kb); kb.classList.remove('saved'); }
     keyHelp.textContent = has
-      ? 'Sleutel bewaard in deze browser. Hij wordt alleen naar api.anthropic.com gestuurd.'
-      : 'Deze pagina draait op GitHub Pages en heeft een eigen Anthropic API-sleutel nodig. Je sleutel blijft in deze browser (localStorage) en wordt alleen naar api.anthropic.com gestuurd.';
+      ? (remembered ? 'Sleutel bewaard in deze browser (localStorage).' : 'Sleutel alleen voor deze sessie; weg zodra je het tabblad sluit.') + ' Hij gaat alleen naar api.anthropic.com.'
+      : HELP;
   }
   keySave.addEventListener('click', () => {
     const v = keyEl.value.trim();
     if(!v) return;
-    store.set(APIKEY, v); keyEl.value=''; showKeyState();
+    if(document.getElementById('keyRemember').checked) store.set(APIKEY, v); else sess.set(APIKEY, v);
+    keyEl.value=''; showKeyState();
   });
   keyEl.addEventListener('keydown', e => { if(e.key==='Enter') keySave.click(); });
-  keyClear.addEventListener('click', () => { store.del(APIKEY); showKeyState(); });
+  keyClear.addEventListener('click', () => { store.del(APIKEY); sess.del(APIKEY); showKeyState(); });
 
   const VOORBEELD =
 `In de rij bij de apotheek zoek ik in mijn tas naar het briefje van de huisarts.
@@ -209,7 +225,7 @@ ${ikje}
       outEl.textContent='Plak eerst een ikje in het linkerveld.';
       return;
     }
-    const apiKey = store.get(APIKEY);
+    const apiKey = getKey();
     if(!apiKey){
       outEl.className='out idle';
       outEl.textContent='Vul eerst bovenaan je Anthropic API-sleutel in.';
